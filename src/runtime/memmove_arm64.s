@@ -1,6 +1,6 @@
-// Copyright 2014 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2026 Google LLC
+// Author: edwinchiu
+// Assisted-By: Gemini 3 Pro Preview
 
 #include "textflag.h"
 
@@ -17,18 +17,39 @@
 // data   R6-R17
 // tmp1   R14
 
-// Copies are split into 3 main cases: small copies of up to 32 bytes, medium
-// copies of up to 128 bytes, and large copies. The overhead of the overlap
-// check is negligible since it is only required for large copies.
-//
-// Large copies use a software pipelined loop processing 64 bytes per iteration.
-// The destination pointer is 16-byte aligned to minimize unaligned accesses.
-// The loop tail is handled by always copying 64 bytes from the end.
-
 // func memmove(to, from unsafe.Pointer, n uintptr)
 TEXT runtime·memmove<ABIInternal>(SB), NOSPLIT|NOFRAME, $0-24
 	CBZ	R2, copy0
 
+	// Feature Check Dispatch using R16 (temp)
+	MOVBU	runtime·arm64UseMOPS(SB), R16
+	CBNZ	R16, copy_mops
+
+	// Overlap Check
+	// If dst < src (bit 63 set), it is always safe for forward copy.
+	// If dst >= src, we must check if they overlap (dist < n).
+	SUB	R1, R0, R16
+	TBNZ	$63, R16, forward_path // dst < src: safe
+	CMP	R2, R16
+	BHI	standard_path          // Overlap: use Standard backward
+
+forward_path:
+	MOVBU	runtime·arm64UseSVEAlways(SB), R16
+	CBNZ	R16, copy_sve
+
+	MOVBU	runtime·arm64UseNEON(SB), R16
+	CBZ	R16, check_sve
+	CMP	$256, R2
+	BHS	copy_neon
+
+check_sve:
+	MOVBU	runtime·arm64UseSVE(SB), R16
+	CBZ	R16, standard_path
+	CMP	$0x100000, R2
+	BHS	copy_sve_big
+	B	standard_path
+
+standard_path:
 	// Small copies: 1..16 bytes
 	CMP	$16, R2
 	BLE	copy16
@@ -36,6 +57,7 @@ TEXT runtime·memmove<ABIInternal>(SB), NOSPLIT|NOFRAME, $0-24
 	// Large copies
 	CMP	$128, R2
 	BHI	copy_long
+
 	CMP	$32, R2
 	BHI	copy32_128
 
@@ -236,3 +258,124 @@ copy64_from_start:
 	STP	(R8, R9), 16(R0)
 	STP	(R10, R11), (R0)
 	RET
+
+copy_mops:
+	// CPYFP [X0]!, [X1]!, X2!  => 0x19010420
+	WORD	$0x19010420
+	// CPYFM [X0]!, [X1]!, X2!  => 0x19014420
+	WORD	$0x19014420
+	// CPYFE [X0]!, [X1]!, X2!  => 0x19018420
+	WORD	$0x19018420
+	RET
+
+copy_neon:
+	// R0=dst, R1=src, R2=n
+neon_loop:
+	VLD1.P	64(R1), [V0.B16, V1.B16, V2.B16, V3.B16]
+	VST1.P	[V0.B16, V1.B16, V2.B16, V3.B16], 64(R0)
+	SUB	$64, R2
+	CMP	$64, R2
+	BHS	neon_loop
+	
+	// Jump to standard path for remainder
+	CBZ	R2, copy0
+	B	standard_path
+
+// SVE implementation
+copy_sve:
+	// Forward copy
+	CMP	$0x100000, R2
+	BHS	copy_sve_big
+
+copy_sve_loop_entry:
+	WORD	$0x0420e3e3	// CNTB	R3
+	CMP	$16, R2
+	BLO	loop_sve_1x
+
+	// Align R0 to 16 bytes
+	NEG	R0, R14
+	AND	$15, R14, R14
+	CBZ	R14, copy_sve_forward
+	WORD	$0x252e17e0	// WHILELT	P0.B, ZR, R14
+	WORD	$0xa400a020	// LD1B	(R1), P0/Z, Z0.B
+	WORD	$0xe400e000	// ST1B	Z0.B, P0, (R0)
+	ADD	R14, R1
+	ADD	R14, R0
+	SUB	R14, R2
+
+copy_sve_forward:
+	ADD	R3, R3, R5	// 2*VL
+	ADD	R3, R5, R6	// 3*VL
+	ADD	R5, R5, R7	// 4*VL
+
+loop_sve_4x:
+	CMP	R7, R2
+	BLO	loop_sve_1x
+	WORD	$0x252217e0	// WHILELT	P0.B, ZR, R2
+	WORD	$0x25221461	// WHILELT	P1.B, R3, R2
+	WORD	$0x252214a2	// WHILELT	P2.B, R5, R2
+	WORD	$0x252214c3	// WHILELT	P3.B, R6, R2
+
+	WORD	$0xa400a020	// LD1B	(R1), P0/Z, Z0.B
+	WORD	$0xa401a421	// LD1B	(R1), P1/Z, Z1.B
+	WORD	$0xa402a822	// LD1B	(R1), P2/Z, Z2.B
+	WORD	$0xa403ac23	// LD1B	(R1), P3/Z, Z3.B
+
+	WORD	$0xe400e000	// ST1B	Z0.B, P0, (R0)
+	WORD	$0xe401e401	// ST1B	Z1.B, P1, (R0)
+	WORD	$0xe402e802	// ST1B	Z2.B, P2, (R0)
+	WORD	$0xe403ec03	// ST1B	Z3.B, P3, (R0)
+
+	WORD	$0x0433e3e1	// INCB	R1, ALL, MUL #4
+	WORD	$0x0433e3e0	// INCB	R0, ALL, MUL #4
+	SUB	R7, R2
+	B	loop_sve_4x
+
+loop_sve_1x:
+	CMP	$0, R2
+	BLE	copy_sve_done
+loop_sve_1x_inner:
+	WORD	$0x252217e0	// WHILELT	P0.B, ZR, R2
+	WORD	$0xa400a020	// LD1B	(R1), P0/Z, Z0.B
+	WORD	$0xe400e000	// ST1B	Z0.B, P0, (R0)
+	WORD	$0x0430e3e1	// INCB	R1
+	WORD	$0x0430e3e0	// INCB	R0
+	SUB	R3, R2
+	CMP	$0, R2
+	BGT	loop_sve_1x_inner
+
+copy_sve_done:
+	RET
+
+copy_sve_big:
+	WORD	$0x0420e3e3	// CNTB	R3
+	ADD	R3, R3, R5	// 2*VL
+	ADD	R3, R5, R6	// 3*VL
+	ADD	R5, R5, R7	// 4*VL
+	WORD	$0x2518e3e0	// PTRUE	P0.B
+
+loop_sve_big:
+	CMP	R7, R2
+	BLO	copy_sve_loop_entry
+	// Prefetch
+	WORD	$0x85c40021
+	WORD	$0x85c50021
+	WORD	$0x85c60021
+	WORD	$0x85c70021
+
+	// LDNT1B
+	WORD	$0xa400e020
+	WORD	$0xa401e021
+	WORD	$0xa402e022
+	WORD	$0xa403e023
+
+	// STNT1B
+	WORD	$0xe410e000
+	WORD	$0xe411e001
+	WORD	$0xe412e002
+	WORD	$0xe413e003
+
+	WORD	$0x0433e3e1	// INCB	R1, ALL, MUL #4
+	WORD	$0x0433e3e0	// INCB	R0, ALL, MUL #4
+	SUB	R7, R2
+	B	loop_sve_big

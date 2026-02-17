@@ -21,6 +21,9 @@ func doinit() {
 		{Name: "atomics", Feature: &ARM64.HasATOMICS},
 		{Name: "cpuid", Feature: &ARM64.HasCPUID},
 		{Name: "isNeoverse", Feature: &ARM64.IsNeoverse},
+		{Name: "sve", Feature: &ARM64.HasSVE},
+		{Name: "sve2", Feature: &ARM64.HasSVE2},
+		{Name: "mops", Feature: &ARM64.HasMOPS},
 	}
 
 	// arm64 uses different ways to detect CPU features at runtime depending on the operating system.
@@ -74,6 +77,11 @@ func parseARM64SystemRegisters(isar0, pfr0 uint64) {
 	switch extractBits(isar0, 32, 35) {
 	case 1:
 		ARM64.HasSHA3 = true
+	}
+
+	switch extractBits(pfr0, 32, 35) {
+	case 1:
+		ARM64.HasSVE = true
 	}
 
 	switch extractBits(pfr0, 48, 51) {
