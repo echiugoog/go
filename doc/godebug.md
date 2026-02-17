@@ -160,6 +160,14 @@ and the [go command documentation](/cmd/go#hdr-Build_and_test_caching).
 
 Go 1.27 removed the `gotypesalias` setting, as noted in the [Go 1.22][#go-122] section.
 
+Go 1.27 added a new `memmove_arm64` setting that controls the implementation strategy
+for the `runtime.memmove` function on ARM64.
+The possible values are:
+- "OPTIMAL": uses the optimized code path (as determined by benchmarks) for a given platform. This is the default.
+- "NEON_ONLY": uses only optimizations for NEON instructions.
+- "SVE_ALL": uses SVE/SVE2 optimized code path (regardless if it's optimal or not, e.g. backward pass).
+- "NO_SIMD": does not use MOPS, NEON or SVE/SVE2. It should be the exact same code path as the standard scalar implementation.
+
 ### Go 1.26
 
 Go 1.26 added a new `httpcookiemaxnum` setting that controls the maximum number
