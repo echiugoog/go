@@ -270,7 +270,7 @@ func xinit() {
 	if err := os.WriteFile(pathf("%s/go.mod", workdir), []byte("module bootstrap\n\ngo "+modVer+"\n"), 0666); err != nil {
 		fatalf("cannot write stub go.mod: %s", err)
 	}
-	xatexit(rmworkdir)
+	// xatexit(rmworkdir)
 
 	tooldir = pathf("%s/pkg/tool/%s_%s", goroot, gohostos, gohostarch)
 
@@ -558,11 +558,11 @@ func setup() {
 		xremoveall(goosGoarch)
 	}
 	xmkdirall(goosGoarch)
-	xatexit(func() {
-		if files := xreaddir(goosGoarch); len(files) == 0 {
-			xremove(goosGoarch)
-		}
-	})
+	// xatexit(func() {
+	// 	if files := xreaddir(goosGoarch); len(files) == 0 {
+	// 		xremove(goosGoarch)
+	// 	}
+	// })
 
 	if goos != gohostos || goarch != gohostarch {
 		p := pathf("%s/pkg/%s_%s", goroot, goos, goarch)
@@ -581,7 +581,7 @@ func setup() {
 	if !isdir(obj) {
 		xmkdir(obj)
 	}
-	xatexit(func() { xremove(obj) })
+	// xatexit(func() { xremove(obj) })
 
 	// Create build cache directory.
 	objGobuild := pathf("%s/pkg/obj/go-build", goroot)
@@ -589,7 +589,7 @@ func setup() {
 		xremoveall(objGobuild)
 	}
 	xmkdirall(objGobuild)
-	xatexit(func() { xremoveall(objGobuild) })
+	// xatexit(func() { xremoveall(objGobuild) })
 
 	// Create directory for bootstrap versions of standard library .a files.
 	objGoBootstrap := pathf("%s/pkg/obj/go-bootstrap", goroot)
@@ -597,7 +597,7 @@ func setup() {
 		xremoveall(objGoBootstrap)
 	}
 	xmkdirall(objGoBootstrap)
-	xatexit(func() { xremoveall(objGoBootstrap) })
+	// xatexit(func() { xremoveall(objGoBootstrap) })
 
 	// Create tool directory.
 	// We keep it in pkg/, just like the object directory above.

@@ -11,6 +11,7 @@ const CacheLinePadSize = 128
 
 func doinit() {
 	options = []option{
+		{Name: "asimd", Feature: &ARM64.HasASIMD},
 		{Name: "aes", Feature: &ARM64.HasAES},
 		{Name: "pmull", Feature: &ARM64.HasPMULL},
 		{Name: "sha1", Feature: &ARM64.HasSHA1},
@@ -21,6 +22,8 @@ func doinit() {
 		{Name: "atomics", Feature: &ARM64.HasATOMICS},
 		{Name: "cpuid", Feature: &ARM64.HasCPUID},
 		{Name: "isNeoverse", Feature: &ARM64.IsNeoverse},
+		{Name: "sve", Feature: &ARM64.HasSVE},
+		{Name: "sve2", Feature: &ARM64.HasSVE2},
 	}
 
 	// arm64 uses different ways to detect CPU features at runtime depending on the operating system.

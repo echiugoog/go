@@ -21,9 +21,13 @@ import _ "unsafe" // for linkname
 //go:linkname HWCap
 var HWCap uint
 
+//go:linkname HWCap2
+var HWCap2 uint
+
 // HWCAP bits. These are exposed by Linux.
 // See arch/arm64/include/uapi/asm/hwcap.h.
 const (
+	hwcap_ASIMD   = 1 << 1
 	hwcap_AES     = 1 << 3
 	hwcap_PMULL   = 1 << 4
 	hwcap_SHA1    = 1 << 5
@@ -33,8 +37,11 @@ const (
 	hwcap_CPUID   = 1 << 11
 	hwcap_SHA3    = 1 << 17
 	hwcap_SHA512  = 1 << 21
+	hwcap_SVE     = 1 << 22
 	hwcap_DIT     = 1 << 24
 	hwcap_SB      = 1 << 29
+
+	hwcap2_SVE2   = 1 << 1
 )
 
 func hwcapInit(os string) {
@@ -42,6 +49,7 @@ func hwcapInit(os string) {
 	// See https://docs.kernel.org/arch/arm64/elf_hwcaps.html.
 	// Use HWCap information since reading aarch64 system registers
 	// is not supported in user space on older linux kernels.
+	ARM64.HasASIMD = isSet(HWCap, hwcap_ASIMD)
 	ARM64.HasAES = isSet(HWCap, hwcap_AES)
 	ARM64.HasPMULL = isSet(HWCap, hwcap_PMULL)
 	ARM64.HasSHA1 = isSet(HWCap, hwcap_SHA1)
@@ -52,6 +60,8 @@ func hwcapInit(os string) {
 	ARM64.HasSHA512 = isSet(HWCap, hwcap_SHA512)
 	ARM64.HasDIT = isSet(HWCap, hwcap_DIT)
 	ARM64.HasSB = isSet(HWCap, hwcap_SB)
+	ARM64.HasSVE = isSet(HWCap, hwcap_SVE)
+	ARM64.HasSVE2 = isSet(HWCap2, hwcap2_SVE2)
 
 	// The Samsung S9+ kernel reports support for atomics, but not all cores
 	// actually support them, resulting in SIGILL. See issue #28431.

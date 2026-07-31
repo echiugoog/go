@@ -5,6 +5,7 @@
 package runtime_test
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
@@ -12,7 +13,9 @@ import (
 	"internal/msan"
 	"internal/race"
 	"internal/testenv"
+	"os"
 	. "runtime"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"unsafe"
@@ -84,7 +87,7 @@ func TestMemmoveAlias(t *testing.T) {
 				}
 				for i := y; i < y+n; i++ {
 					if buf[i] != byte(i-y+x) {
-						t.Fatalf("copied buf[%d] = %d", i, buf[i])
+						t.Fatalf("n=%d x=%d y=%d: copied buf[%d] = %d, expected %d", n, x, y, i, buf[i], byte(i-y+x))
 					}
 					buf[i] = byte(i) // reset buf
 				}
@@ -1373,4 +1376,75 @@ func BenchmarkMemmoveKnownSize1024(b *testing.B) {
 	}
 
 	memclrSink = p.x[:]
+}
+
+func TestMemmoveGODEBUGFallbacks(t *testing.T) {
+	if testenv.Builder() == "" && os.Getenv("GO_TEST_SUBPROCESS") == "" {
+		modes := []string{"off", "neon", "asimd", "sve"}
+		for _, mode := range modes {
+			t.Run("GODEBUG=arm64memmove="+mode, func(t *testing.T) {
+				cmd := testenv.Command(t, testenv.Executable(t), "-test.run=^TestMemmove$|^TestMemmoveOverlap$")
+				cmd.Env = append(os.Environ(), "GODEBUG=arm64memmove="+mode, "GO_TEST_SUBPROCESS=1")
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("GODEBUG=arm64memmove=%s failed: %v\nOutput: %s", mode, err, out)
+				}
+			})
+		}
+	}
+}
+
+func TestMemmovePreemption(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping intensive preemption tests in short mode")
+	}
+
+	const bufSize = 4 << 20 // 4 MB buffer per worker
+	workers := GOMAXPROCS(0) + 2
+	var wg sync.WaitGroup
+
+	stop := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				GC()
+				Gosched()
+			}
+		}
+	}()
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			src := make([]byte, bufSize)
+			dst := make([]byte, bufSize)
+			for i := range src {
+				src[i] = byte(i*17 + id)
+			}
+			copy(dst, src)
+			if !bytes.Equal(dst, src) {
+				t.Errorf("worker %d: non-overlapping copy mismatch across preemption cycles", id)
+			}
+
+			// Overlapping moves test
+			overlapBuf := make([]byte, bufSize+65536)
+			for i := range overlapBuf {
+				overlapBuf[i] = byte(i ^ 0xAA)
+			}
+			copy(overlapBuf[32768:], overlapBuf[:bufSize])
+			for i := 0; i < bufSize; i++ {
+				expected := byte(i ^ 0xAA)
+				if overlapBuf[32768+i] != expected {
+					t.Errorf("worker %d: overlapping backward copy mismatch at byte offset %d across preemption cycles", id, i)
+					break
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	close(stop)
 }

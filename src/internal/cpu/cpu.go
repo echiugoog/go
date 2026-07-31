@@ -75,6 +75,7 @@ var ARM struct {
 // The struct is padded to avoid false sharing.
 var ARM64 struct {
 	_          CacheLinePad
+	HasASIMD   bool
 	HasAES     bool
 	HasPMULL   bool
 	HasSHA1    bool
@@ -86,6 +87,8 @@ var ARM64 struct {
 	HasCPUID   bool
 	HasDIT     bool
 	HasSB      bool
+	HasSVE     bool
+	HasSVE2    bool
 	IsNeoverse bool
 	_          CacheLinePad
 }

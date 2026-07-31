@@ -329,6 +329,7 @@ var debug struct {
 	traceCheckStackOwnership int32
 	profstackdepth           int32
 	dataindependenttiming    int32
+	arm64memmove             int32
 
 	// debug.malloc is used as a combined debug check
 	// in the malloc function and should be set
@@ -356,6 +357,7 @@ var debug struct {
 
 var dbgvars = []*dbgVar{
 	{name: "adaptivestackstart", value: &debug.adaptivestackstart},
+	{name: "arm64memmove", value: &debug.arm64memmove, def: 1},
 	{name: "asyncpreemptoff", value: &debug.asyncpreemptoff},
 	{name: "cgocheck", value: &debug.cgocheck},
 	{name: "clobberfree", value: &debug.clobberfree},
@@ -444,6 +446,7 @@ func parseRuntimeDebugVars(godebug string) {
 	if debug.gccheckmark > 0 {
 		debug.asyncpreemptoff = 1
 	}
+	finishCPUInitARM64()
 }
 
 func finishDebugVarsSetup() {
@@ -469,6 +472,7 @@ func reparsedebugvars(env string) {
 			v.atomic.Store(0)
 		}
 	}
+	finishCPUInitARM64()
 }
 
 // If an invalid GODEBUG setting is found during startup time,
@@ -547,6 +551,17 @@ func parsegodebug(godebug string, seen map[string]bool) {
 		if seen == nil && key == "memprofilerate" {
 			if n, err := strconv.Atoi(value); err == nil {
 				MemProfileRate = n
+			}
+		} else if key == "arm64memmove" {
+			switch value {
+			case "off", "base", "0":
+				debug.arm64memmove = 0
+			case "on", "auto", "1":
+				debug.arm64memmove = 1
+			case "neon", "asimd", "2":
+				debug.arm64memmove = 2
+			case "sve", "3":
+				debug.arm64memmove = 3
 			}
 		} else {
 			for _, v := range dbgvars {

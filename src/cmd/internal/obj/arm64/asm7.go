@@ -36,7 +36,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"internal/buildcfg"
 	"log"
 	"math"
 	"math/bits"
@@ -2258,7 +2257,7 @@ func isSVE(as obj.As) bool {
 }
 
 func (c *ctxt7) oplook(p *obj.Prog) *Optab {
-	if buildcfg.Experiment.SIMD && isSVE(p.As) {
+	if isSVE(p.As) {
 		// All SVE instructions are in the Insts table.
 		// Matching happens in asmout.
 		return &sveOptab
