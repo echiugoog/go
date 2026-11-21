@@ -87,9 +87,12 @@ tail:
 */
 forward:
 	CMPQ	BX, $2048
-	JL	check_avx
-	// REP MOVSx is slow if destination address is unaligned.
-	TESTQ	$15,DI
+	JBE	check_avx
+	// REP MOVSQ is slow if destination is not 16-byte aligned or
+	// source is not 8-byte aligned.
+	TESTB	$15, DI
+	JNZ	check_avx
+	TESTB	$7, SI
 	JNZ	check_avx
 	TESTB	$const_repmovsPreferred, AX
 	JNZ	fwdBy8
@@ -103,7 +106,7 @@ check_avx:
 	// Check alignment
 	MOVL	SI, AX
 	ORL	DI, AX
-	TESTL	$7, AX
+	TESTB	$7, AX
 	JEQ	fwdBy8
 
 	// Do 1 byte at a time
@@ -378,6 +381,7 @@ avxUnaligned:
 	ADDQ	R11, SI
 	SUBQ	AX, BX
 	// Aligned memory copying there
+	PCALIGN	$32
 gobble_128_loop:
 	VMOVDQU	(SI), Y0
 	VMOVDQU	0x20(SI), Y1
