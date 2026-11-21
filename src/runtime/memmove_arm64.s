@@ -79,21 +79,20 @@ copy7:
 	MOVW	B_l, -4(dstend)
 	RET
 
+	// Copy 1..3 bytes using a branchless sequence.
 copy3:
-	TBZ	$1, count, copy1
-	MOVHU	(src), A_l
-	MOVHU	-2(srcend), A_h
-	MOVH	A_l, (dstin)
-	MOVH	A_h, -2(dstend)
-	RET
-
-copy1:
+	LSR	$1, count, tmp1
 	MOVBU	(src), A_l
+	MOVBU	-1(srcend), A_h
+	MOVBU	(src)(tmp1), B_l
 	MOVB	A_l, (dstin)
+	MOVB	B_l, (dstin)(tmp1)
+	MOVB	A_h, -1(dstend)
 
 copy0:
 	RET
 
+	PCALIGN	$16
 	// Medium copies: 33..128 bytes.
 copy32_128:
 	FLDPQ	(src), (A_q, B_q)
